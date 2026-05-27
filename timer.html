@@ -1,0 +1,547 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>발표 타이머</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Segoe UI', 'Apple SD Gothic Neo', sans-serif;
+      background: #ffffff;
+      min-height: 100vh;
+      display: flex; align-items: center; justify-content: center;
+      transition: background 0.8s ease;
+    }
+    body.warning  { background: #DBEAFE; }
+    body.finished { background: #BFDBFE; animation: bgPulse 1s ease-in-out infinite alternate; }
+    @keyframes bgPulse { from { background: #BFDBFE; } to { background: #93C5FD; } }
+
+    /* ── 발표 모드 버튼 ── */
+    .present-btn {
+      position: fixed; top: 20px; left: 20px;
+      background: rgba(255,255,255,0.9); border: 2px solid #e2e8f0;
+      border-radius: 12px; height: 40px; padding: 0 14px;
+      display: flex; align-items: center; justify-content: center; gap: 8px;
+      cursor: pointer; font-size: 0.88rem; font-weight: 700; color: #334155;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.07);
+      transition: all 0.15s; z-index: 5; white-space: nowrap;
+    }
+    .present-btn:hover  { background: #f5f3ff; border-color: #a78bfa; color: #6d28d9; }
+    .present-btn.active { background: #ede9fe; border-color: #7c3aed; color: #5b21b6; }
+    body.presenting .present-btn { opacity: 0; transition: opacity 0.3s; }
+    body.presenting .present-btn:hover { opacity: 1; }
+
+    /* number 스피너 제거 */
+    input[type="number"]::-webkit-outer-spin-button,
+    input[type="number"]::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+    input[type="number"] { -moz-appearance: textfield; }
+
+    /* ── 메인 레이아웃 ── */
+    .timer-wrap {
+      display: flex; flex-direction: column; align-items: center;
+      gap: 28px; user-select: none; width: min(560px, 92vw);
+    }
+
+    /* ── 프리셋 ── */
+    .dash-presets { display: flex; gap: 10px; flex-wrap: wrap; justify-content: center; }
+    .dash-preset-btn {
+      padding: 8px 18px; background: #f1f5f9; border: 2px solid transparent;
+      border-radius: 99px; font-size: 0.9rem; font-weight: 700; color: #475569;
+      cursor: pointer; transition: all 0.15s;
+    }
+    .dash-preset-btn:hover  { background: #e0f2fe; border-color: #7dd3fc; color: #0369a1; }
+    .dash-preset-btn.active { background: #DBEAFE; border-color: #3b82f6; color: #1d4ed8; }
+    body.presenting .dash-presets { display: none; }
+
+    /* ── 원형 타이머 ── */
+    .circle-timer {
+      position: relative;
+      width: clamp(240px, 62vw, 340px);
+      aspect-ratio: 1;
+      flex-shrink: 0;
+      transition: width 0.4s ease;
+    }
+    body.presenting .circle-timer {
+      width: clamp(300px, 62vh, 560px);
+    }
+
+    .progress-svg {
+      position: absolute; inset: 0;
+      width: 100%; height: 100%;
+      transform: rotate(-90deg);
+    }
+    .progress-track {
+      fill: none; stroke: #e2e8f0; stroke-width: 14;
+    }
+    .progress-ring {
+      fill: none; stroke: #3b82f6; stroke-width: 14;
+      stroke-linecap: round;
+      stroke-dasharray: 817;
+      stroke-dashoffset: 0;
+      transition: stroke-dashoffset 0.5s linear, stroke 0.8s;
+    }
+    body.warning  .progress-ring { stroke: #2563eb; }
+    body.finished .progress-ring { stroke: #93c5fd; stroke-dashoffset: 817; transition: stroke-dashoffset 0.3s ease; }
+
+    /* 원 안쪽 콘텐츠 */
+    .circle-content {
+      position: absolute; inset: 0;
+      display: flex;
+      align-items: center; justify-content: center;
+    }
+
+    /* 시간 표시 */
+    .time-display {
+      font-size: clamp(2.8rem, 11vw, 5.2rem);
+      font-weight: 800; color: #1e293b;
+      font-variant-numeric: tabular-nums;
+      line-height: 1; cursor: pointer;
+      border-bottom: 3px solid transparent;
+      transition: color 0.8s, border-color 0.2s, font-size 0.4s;
+    }
+    .time-display:hover { border-bottom-color: #cbd5e1; }
+    body.running .time-display { cursor: default; }
+    body.running .time-display:hover { border-bottom-color: transparent; }
+    .time-display.hidden { display: none; }
+    body.warning  .time-display { color: #1d4ed8; }
+    body.finished .time-display { color: #1d4ed8; animation: textBlink 1s ease-in-out infinite alternate; }
+    body.presenting .time-display {
+      font-size: clamp(4rem, 14vh, 8.5rem);
+      cursor: default; border-bottom-color: transparent !important;
+    }
+    @keyframes textBlink { from { opacity: 1; } to { opacity: 0.35; } }
+
+    /* 인라인 편집 */
+    .inline-input {
+      display: none;
+      font-size: clamp(2.8rem, 11vw, 5.2rem);
+      font-weight: 800; font-family: inherit;
+      font-variant-numeric: tabular-nums; line-height: 1;
+      color: #1e293b; background: transparent;
+      border: none; border-bottom: 3px solid #3b82f6;
+      outline: none; text-align: center; width: 6ch; padding: 0;
+    }
+    .inline-input.visible { display: block; }
+    body.warning .inline-input { color: #1d4ed8; border-bottom-color: #1d4ed8; }
+
+    /* 상태 텍스트 — 타이머와 원 하단 사이 중간 */
+    .status-text {
+      position: absolute;
+      bottom: 24%; left: 0; right: 0;
+      text-align: center;
+      font-size: 0.78rem; font-weight: 600; color: #94a3b8;
+      letter-spacing: 0.08em; text-transform: uppercase;
+    }
+    body.warning .status-text { color: #3b82f6; }
+
+    /* 종료 메시지 */
+    .finish-msg { display: none; font-size: 1.05rem; font-weight: 700; color: #1d4ed8; letter-spacing: 0.04em; }
+    body.finished .finish-msg { display: block; }
+
+    /* ── 컨트롤 ── */
+    .controls { display: flex; gap: 12px; }
+    .ctrl-btn {
+      padding: 13px 22px; border: none; border-radius: 12px;
+      font-size: 0.95rem; font-weight: 700; cursor: pointer;
+      transition: all 0.15s; display: flex; align-items: center;
+      justify-content: center; gap: 8px; line-height: 1;
+    }
+    .btn-start {
+      background: #3b82f6; color: #fff; min-width: 110px;
+      border: 2px solid transparent;
+    }
+    .btn-start:hover { background: #2563eb; transform: translateY(-1px); box-shadow: 0 4px 12px rgba(59,130,246,0.35); }
+    .btn-start:active { transform: translateY(0); }
+
+    .btn-reset { background: #f1f5f9; color: #64748b; border: 2px solid transparent; }
+    .btn-reset:hover { background: #e2e8f0; color: #334155; }
+    body.presenting .btn-reset { display: none; }
+
+    .btn-restart { background: #f0fdf4; color: #16a34a; border: 2px solid #86efac; }
+    .btn-restart:hover { background: #dcfce7; border-color: #4ade80; transform: translateY(-1px); box-shadow: 0 4px 12px rgba(34,197,94,0.15); }
+    .btn-restart:active { transform: translateY(0); }
+
+    /* ── Q&A ── */
+    .qna-divider { width: 100%; display: flex; align-items: center; gap: 10px; }
+    .qna-divider::before, .qna-divider::after { content: ''; flex: 1; height: 1px; background: #e2e8f0; }
+    .qna-divider-label { font-size: 0.75rem; font-weight: 700; color: #94a3b8; letter-spacing: 0.08em; }
+
+    .qna-row { display: flex; align-items: center; gap: 10px; }
+    .btn-qna {
+      height: 40px; padding: 0 20px; background: #f0fdf4; border: 2px solid #86efac;
+      border-radius: 12px; font-size: 0.95rem; font-weight: 700; color: #16a34a;
+      cursor: pointer; transition: all 0.15s;
+      display: flex; align-items: center; justify-content: center; gap: 8px; line-height: 1;
+    }
+    .btn-qna:hover { background: #dcfce7; border-color: #4ade80; transform: translateY(-1px); box-shadow: 0 4px 12px rgba(34,197,94,0.2); }
+    .btn-qna:active { transform: translateY(0); }
+
+    .btn-qna-edit {
+      display: flex; align-items: center; justify-content: center; gap: 8px; line-height: 1;
+      height: 40px; padding: 0 16px; background: #f8fafc;
+      border: 2px solid #e2e8f0; border-radius: 12px;
+      font-size: 0.95rem; font-weight: 700; color: #94a3b8;
+      cursor: pointer; transition: all 0.18s; white-space: nowrap;
+    }
+    .btn-qna-edit:hover { background: #f0fdf4; border-color: #4ade80; color: #16a34a; transform: translateY(-1px); }
+    .btn-qna-edit .qna-time-badge {
+      background: #e2e8f0; color: #475569;
+      padding: 5px 14px; border-radius: 8px;
+      font-size: 0.85rem; font-weight: 800; line-height: 1;
+      transition: background 0.18s, color 0.18s;
+    }
+    .btn-qna-edit:hover .qna-time-badge { background: #bbf7d0; color: #15803d; }
+
+    /* ── 모달 ── */
+    .modal-overlay {
+      display: none; position: fixed; inset: 0;
+      background: rgba(15,23,42,0.4); backdrop-filter: blur(4px);
+      z-index: 100; align-items: center; justify-content: center;
+    }
+    .modal-overlay.open { display: flex; animation: fadeIn 0.18s ease; }
+    @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+
+    .modal {
+      background: #fff; border-radius: 20px; padding: 32px 28px; width: 280px;
+      box-shadow: 0 20px 60px rgba(0,0,0,0.18);
+      animation: slideUp 0.2s cubic-bezier(.34,1.56,.64,1);
+      display: flex; flex-direction: column; gap: 24px;
+    }
+    @keyframes slideUp { from { transform: translateY(16px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+
+    .modal-title { font-size: 1.05rem; font-weight: 800; color: #1e293b; text-align: center; }
+    .modal-input-wrap { display: flex; align-items: center; justify-content: center; gap: 10px; }
+    .modal-input {
+      width: 80px; padding: 12px 8px;
+      border: 2px solid #e2e8f0; border-radius: 12px;
+      font-size: 2rem; font-weight: 800; text-align: center;
+      color: #1e293b; background: #f8fafc; outline: none;
+      transition: border-color 0.15s;
+    }
+    .modal-input:focus { border-color: #16a34a; background: #fff; }
+    .modal-unit { font-size: 1rem; font-weight: 700; color: #64748b; }
+    .modal-footer { display: flex; gap: 10px; }
+    .modal-cancel {
+      flex: 1; padding: 12px; border: 2px solid #e2e8f0;
+      border-radius: 12px; background: #f8fafc;
+      font-size: 0.95rem; font-weight: 700; color: #64748b; cursor: pointer; transition: all 0.15s;
+    }
+    .modal-cancel:hover { background: #f1f5f9; }
+    .modal-save {
+      flex: 1; padding: 12px; border: none;
+      border-radius: 12px; background: #16a34a;
+      font-size: 0.95rem; font-weight: 700; color: #fff; cursor: pointer; transition: all 0.15s;
+    }
+    .modal-save:hover { background: #15803d; transform: translateY(-1px); }
+    .modal-save:active { transform: translateY(0); }
+  </style>
+</head>
+<body>
+
+  <!-- 발표 모드 버튼 -->
+  <button class="present-btn" id="presentBtn"><span aria-hidden="true">⛶</span><span>발표 모드</span></button>
+
+  <!-- Q&A 모달 -->
+  <div class="modal-overlay" id="qnaModalOverlay">
+    <div class="modal">
+      <div class="modal-title">Q&A 시간 설정</div>
+      <div class="modal-input-wrap">
+        <input class="modal-input" id="modalQnaInput" type="number" min="1" max="99" value="5" />
+        <span class="modal-unit">분</span>
+      </div>
+      <div class="modal-footer">
+        <button class="modal-cancel" id="modalCancelBtn">취소</button>
+        <button class="modal-save"   id="modalSaveBtn">저장</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 타이머 -->
+  <div class="timer-wrap">
+
+    <!-- 프리셋 -->
+    <div class="dash-presets">
+      <button class="dash-preset-btn" data-min="5">5분</button>
+      <button class="dash-preset-btn" data-min="10">10분</button>
+      <button class="dash-preset-btn" data-min="15">15분</button>
+      <button class="dash-preset-btn" data-min="20">20분</button>
+    </div>
+
+    <!-- 원형 타이머 -->
+    <div class="circle-timer">
+      <svg class="progress-svg" viewBox="0 0 300 300">
+        <circle class="progress-track" cx="150" cy="150" r="130" />
+        <circle class="progress-ring"  cx="150" cy="150" r="130" id="progressRing" />
+      </svg>
+      <div class="circle-content">
+        <div class="time-display" id="timeDisplay" title="클릭하여 시간 편집">10:00</div>
+        <input class="inline-input" id="inlineInput" type="text" maxlength="5" placeholder="MM:SS" />
+        <div class="status-text" id="statusText">준비</div>
+      </div>
+    </div>
+
+    <div class="finish-msg">⏰ 발표 시간이 종료되었습니다!</div>
+
+    <!-- 컨트롤 -->
+    <div class="controls">
+      <button class="ctrl-btn btn-start"   id="startBtn">시작</button>
+      <button class="ctrl-btn btn-reset"   id="resetBtn">↺ 초기화</button>
+      <button class="ctrl-btn btn-restart" id="restartBtn">↻ 재시작</button>
+    </div>
+
+    <!-- Q&A -->
+    <div class="qna-divider"><span class="qna-divider-label">Q &amp; A</span></div>
+    <div class="qna-row">
+      <button class="btn-qna" id="qnaBtn"><svg width="17" height="17" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true" style="flex-shrink:0;display:block"><path d="M11.596 8.697L5.233 12.39c-.54.313-1.233-.066-1.233-.697V4.308c0-.63.692-1.01 1.233-.696l6.363 3.692a.802.802 0 0 1 0 1.393z"/></svg> Q&A 시작</button>
+      <button class="btn-qna-edit" id="qnaEditBtn" title="Q&A 시간 수정">
+        <span>✏️</span>
+        <span class="qna-time-badge" id="qnaTimeBadge">5분</span>
+      </button>
+    </div>
+
+  </div>
+
+<script>
+  // ── 아이콘 SVG ───────────────────────────────────────
+  const ICON_PLAY  = `<svg width="17" height="17" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true" style="flex-shrink:0;display:block"><path d="M11.596 8.697L5.233 12.39c-.54.313-1.233-.066-1.233-.697V4.308c0-.63.692-1.01 1.233-.696l6.363 3.692a.802.802 0 0 1 0 1.393z"/></svg>`;
+  const ICON_PAUSE = `<svg width="17" height="17" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true" style="flex-shrink:0;display:block"><path d="M5.5 3.5A1.5 1.5 0 0 1 7 5v6a1.5 1.5 0 0 1-3 0V5a1.5 1.5 0 0 1 1.5-1.5zm5 0A1.5 1.5 0 0 1 12 5v6a1.5 1.5 0 0 1-3 0V5a1.5 1.5 0 0 1 1.5-1.5z"/></svg>`;
+
+  function setStartBtn(playing) {
+    startBtn.innerHTML = playing ? `${ICON_PAUSE} 일시정지` : `${ICON_PLAY} 시작`;
+  }
+
+  // ── 상수 ─────────────────────────────────────────────
+  const CIRCUMFERENCE = 2 * Math.PI * 130; // ≈ 816.8
+
+  // ── 상태 ─────────────────────────────────────────────
+  let totalSeconds   = 10 * 60;
+  let remaining      = totalSeconds;
+  let running        = false;
+  let intervalId     = null;
+  let warningSeconds = 60;
+  let qnaSeconds     = 5 * 60;
+  let isQnaMode      = false;
+
+  // ── DOM ──────────────────────────────────────────────
+  const timeDisplay     = document.getElementById('timeDisplay');
+  const progressRing    = document.getElementById('progressRing');
+  const statusText      = document.getElementById('statusText');
+  const startBtn        = document.getElementById('startBtn');
+  const resetBtn        = document.getElementById('resetBtn');
+  const restartBtn      = document.getElementById('restartBtn');
+  const qnaBtn          = document.getElementById('qnaBtn');
+  const qnaEditBtn      = document.getElementById('qnaEditBtn');
+  const qnaTimeBadge    = document.getElementById('qnaTimeBadge');
+  const presentBtn      = document.getElementById('presentBtn');
+  const dashPresets     = document.querySelectorAll('.dash-preset-btn');
+  const qnaModalOverlay = document.getElementById('qnaModalOverlay');
+  const modalQnaInput   = document.getElementById('modalQnaInput');
+
+  // ── 초기 SVG 설정 ────────────────────────────────────
+  progressRing.style.strokeDasharray  = CIRCUMFERENCE;
+  progressRing.style.strokeDashoffset = 0;
+
+  // ── 헬퍼 ─────────────────────────────────────────────
+  function fmt(s) {
+    const m = Math.floor(s / 60), sec = s % 60;
+    return `${String(m).padStart(2,'0')}:${String(sec).padStart(2,'0')}`;
+  }
+
+  function updateDisplay() {
+    document.body.classList.toggle('running', running);
+    timeDisplay.textContent = fmt(remaining);
+
+    // 원형 진행바
+    const pct = totalSeconds > 0 ? remaining / totalSeconds : 0;
+    progressRing.style.strokeDashoffset = CIRCUMFERENCE * (1 - pct);
+
+    // 상태 클래스
+    document.body.classList.remove('warning', 'finished');
+    if (remaining <= 0) {
+      document.body.classList.add('finished');
+      statusText.textContent = isQnaMode ? 'Q&A 종료' : '시간 종료';
+    } else if (warningSeconds > 0 && remaining <= warningSeconds) {
+      document.body.classList.add('warning');
+      const wm = Math.floor(warningSeconds / 60), ws = warningSeconds % 60;
+      statusText.textContent = ws ? `⚠ ${wm}분 ${ws}초 이하 남음` : `⚠ ${wm}분 이하 남음`;
+    } else {
+      statusText.textContent = running
+        ? (isQnaMode ? 'Q&A 진행 중' : '진행 중')
+        : (isQnaMode ? 'Q&A 준비' : '준비');
+    }
+  }
+
+  function tick() {
+    if (remaining <= 0) {
+      clearInterval(intervalId);
+      running = false; remaining = 0;
+      setStartBtn(false);
+      updateDisplay(); return;
+    }
+    remaining--;
+    updateDisplay();
+  }
+
+  // ── 프리셋 ───────────────────────────────────────────
+  function setPreset(minutes, seconds = 0) {
+    clearInterval(intervalId);
+    running = false; isQnaMode = false;
+    totalSeconds = minutes * 60 + seconds;
+    remaining    = totalSeconds;
+    setStartBtn(false);
+    dashPresets.forEach(b => b.classList.toggle('active', parseInt(b.dataset.min) === minutes && seconds === 0));
+    updateDisplay();
+  }
+  dashPresets.forEach(btn =>
+    btn.addEventListener('click', () => setPreset(parseInt(btn.dataset.min, 10)))
+  );
+  document.querySelector('[data-min="10"]').classList.add('active');
+
+  // ── 시작 / 일시정지 ──────────────────────────────────
+  startBtn.addEventListener('click', () => {
+    if (remaining <= 0) return;
+    if (running) {
+      clearInterval(intervalId); running = false;
+      setStartBtn(false);
+      statusText.textContent = '일시정지';
+    } else {
+      running = true; setStartBtn(true);
+      intervalId = setInterval(tick, 1000);
+      updateDisplay();
+    }
+  });
+
+  // ── 초기화 ───────────────────────────────────────────
+  resetBtn.addEventListener('click', () => {
+    clearInterval(intervalId);
+    running = false; isQnaMode = false;
+    remaining = totalSeconds;
+    setStartBtn(false);
+    updateDisplay();
+  });
+
+  // ── 재시작 ───────────────────────────────────────────
+  restartBtn.addEventListener('click', () => {
+    clearInterval(intervalId);
+    isQnaMode = false;
+    remaining = totalSeconds;
+    running = true;
+    setStartBtn(true);
+    intervalId = setInterval(tick, 1000);
+    updateDisplay();
+  });
+
+  // ── Q&A 시작 ─────────────────────────────────────────
+  qnaBtn.addEventListener('click', () => {
+    clearInterval(intervalId);
+    isQnaMode = true; totalSeconds = qnaSeconds; remaining = qnaSeconds;
+    running = true; setStartBtn(true);
+    dashPresets.forEach(b => b.classList.remove('active'));
+    intervalId = setInterval(tick, 1000);
+    updateDisplay();
+  });
+
+  // ── Q&A 모달 ─────────────────────────────────────────
+  qnaEditBtn.addEventListener('click', () => {
+    modalQnaInput.value = Math.round(qnaSeconds / 60);
+    qnaModalOverlay.classList.add('open');
+    modalQnaInput.focus(); modalQnaInput.select();
+  });
+  function closeQnaModal() { qnaModalOverlay.classList.remove('open'); }
+  function saveQnaModal() {
+    const val = Math.max(1, Math.min(99, parseInt(modalQnaInput.value) || 5));
+    qnaSeconds = val * 60;
+    qnaTimeBadge.textContent = `${val}분`;
+    closeQnaModal();
+  }
+  document.getElementById('modalCancelBtn').addEventListener('click', closeQnaModal);
+  document.getElementById('modalSaveBtn').addEventListener('click', saveQnaModal);
+  qnaModalOverlay.addEventListener('click', e => { if (e.target === qnaModalOverlay) closeQnaModal(); });
+  modalQnaInput.addEventListener('keydown', e => {
+    if (e.key === 'Enter')  { e.preventDefault(); saveQnaModal(); }
+    if (e.key === 'Escape') { e.preventDefault(); closeQnaModal(); }
+  });
+
+  // ── 발표 모드 ────────────────────────────────────────
+  presentBtn.addEventListener('click', () => {
+    if (!document.fullscreenElement) document.documentElement.requestFullscreen().catch(() => {});
+    else document.exitFullscreen().catch(() => {});
+  });
+  document.addEventListener('fullscreenchange', () => {
+    const isFs = !!document.fullscreenElement;
+    presentBtn.classList.toggle('active', isFs);
+    presentBtn.innerHTML = isFs
+      ? '<span aria-hidden="true">✕</span><span>발표 모드 종료</span>'
+      : '<span aria-hidden="true">⛶</span><span>발표 모드</span>';
+    document.body.classList.toggle('presenting', isFs);
+  });
+
+  // ── 타이머 인라인 편집 ───────────────────────────────
+  const inlineInput = document.getElementById('inlineInput');
+  let wasRunning = false;
+
+  timeDisplay.addEventListener('click', () => {
+    if (document.body.classList.contains('finished')) return;
+    if (running) return; // 실행 중에는 수정 불가 (발표 모드 포함)
+    wasRunning = false;
+    inlineInput.value = fmt(remaining);
+    timeDisplay.classList.add('hidden');
+    inlineInput.classList.add('visible');
+    inlineInput.focus(); inlineInput.select();
+    statusText.textContent = '시간 편집 중';
+  });
+
+  function commitEdit() {
+    const raw = inlineInput.value.trim();
+    let m = 0, s = 0;
+    if (/^\d*:\d*$/.test(raw)) {
+      // "MM:SS", "MM:", ":SS", ":" 모두 처리
+      const [mPart, sPart] = raw.split(':');
+      m = parseInt(mPart) || 0;
+      s = parseInt(sPart) || 0;
+    } else if (/^\d+$/.test(raw)) {
+      if (raw.length >= 3) { s = parseInt(raw.slice(-2), 10); m = parseInt(raw.slice(0,-2), 10); }
+      else { m = parseInt(raw, 10); }
+    }
+    s = Math.max(0, Math.min(59, s || 0));
+    m = Math.max(0, Math.min(99, m || 0));
+    const newTotal = m * 60 + s;
+    if (newTotal > 0) {
+      totalSeconds = newTotal; remaining = newTotal; isQnaMode = false;
+      dashPresets.forEach(b => b.classList.toggle('active', parseInt(b.dataset.min) * 60 === totalSeconds));
+    }
+    inlineInput.classList.remove('visible');
+    timeDisplay.classList.remove('hidden');
+    updateDisplay();
+    if (wasRunning && remaining > 0) {
+      running = true; setStartBtn(true);
+      intervalId = setInterval(tick, 1000);
+    }
+  }
+
+  inlineInput.addEventListener('input', () => {
+    const digits = inlineInput.value.replace(/\D/g, '').slice(0, 4);
+    // 콜론은 항상 유지: 숫자 0개여도 ":"
+    const mm = digits.length >= 3 ? digits.slice(0, digits.length - 2) : digits;
+    const ss = digits.length >= 3 ? digits.slice(-2) : '';
+    inlineInput.value = mm + ':' + ss;
+  });
+  inlineInput.addEventListener('keydown', e => {
+    if (e.key === 'Enter')  { e.preventDefault(); commitEdit(); }
+    if (e.key === 'Escape') {
+      e.preventDefault();
+      inlineInput.classList.remove('visible');
+      timeDisplay.classList.remove('hidden');
+      updateDisplay();
+    }
+  });
+  inlineInput.addEventListener('blur', commitEdit);
+
+  // ── 초기 렌더 ────────────────────────────────────────
+  setStartBtn(false);
+  updateDisplay();
+</script>
+</body>
+</html>
