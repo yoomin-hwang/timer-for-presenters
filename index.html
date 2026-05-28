@@ -25,6 +25,8 @@
     body.warning  { background: #DBEAFE; }
     body.finished { background: #BFDBFE; animation: bgPulse 1s ease-in-out infinite alternate; }
     @keyframes bgPulse { from { background: #BFDBFE; } to { background: #93C5FD; } }
+    body.last5 { animation: last5Pulse 0.6s ease-in-out infinite alternate; }
+    @keyframes last5Pulse { from { background: #DBEAFE; } to { background: #93C5FD; } }
 
     /* ── 발표 모드 버튼 ── */
     .present-btn {
@@ -81,17 +83,20 @@
       transform: rotate(-90deg);
     }
     .progress-track {
-      fill: none; stroke: #e2e8f0; stroke-width: 14;
+      fill: none; stroke: #cbd5e1; stroke-width: 14;
+      transition: stroke 0.8s;
     }
+    body.warning  .progress-track { stroke: rgba(255,255,255,0.55); }
+    body.finished .progress-track { stroke: rgba(255,255,255,0.45); }
     .progress-ring {
       fill: none; stroke: #3b82f6; stroke-width: 14;
       stroke-linecap: round;
-      stroke-dasharray: 817;
+      stroke-dasharray: 817 817;
       stroke-dashoffset: 0;
-      transition: stroke-dashoffset 0.5s linear, stroke 0.8s;
+      transition: stroke-dasharray 1s linear, stroke 0.8s;
     }
     body.warning  .progress-ring { stroke: #2563eb; }
-    body.finished .progress-ring { stroke: #93c5fd; stroke-dashoffset: 817; transition: stroke-dashoffset 0.3s ease; }
+    body.finished .progress-ring { stroke: #93c5fd; stroke-dasharray: 0 817; transition: stroke-dasharray 0.3s ease; }
 
     /* 원 안쪽 콘텐츠 */
     .circle-content {
@@ -173,8 +178,10 @@
 
     /* ── Q&A ── */
     .qna-divider { width: 100%; display: flex; align-items: center; gap: 10px; }
-    .qna-divider::before, .qna-divider::after { content: ''; flex: 1; height: 1px; background: #e2e8f0; }
-    .qna-divider-label { font-size: 0.75rem; font-weight: 700; color: #94a3b8; letter-spacing: 0.08em; }
+    .qna-divider::before, .qna-divider::after { content: ''; flex: 1; height: 1px; background: #e2e8f0; transition: background 0.8s; }
+    .qna-divider-label { font-size: 0.75rem; font-weight: 700; color: #94a3b8; letter-spacing: 0.08em; transition: color 0.8s; }
+    body.warning .qna-divider::before, body.warning .qna-divider::after { background: #93c5fd; }
+    body.warning .qna-divider-label { color: #1e40af; }
 
     .qna-row { display: flex; align-items: center; gap: 10px; }
     .btn-qna {
@@ -222,9 +229,9 @@
     .modal-title { font-size: 1.05rem; font-weight: 800; color: #1e293b; text-align: center; }
     .modal-input-wrap { display: flex; align-items: center; justify-content: center; gap: 10px; }
     .modal-input {
-      width: 80px; padding: 12px 8px;
+      width: 64px; padding: 10px 6px;
       border: 2px solid #e2e8f0; border-radius: 12px;
-      font-size: 2rem; font-weight: 800; text-align: center;
+      font-size: 1.7rem; font-weight: 800; text-align: center;
       color: #1e293b; background: #f8fafc; outline: none;
       transition: border-color 0.15s;
     }
@@ -244,6 +251,26 @@
     }
     .modal-save:hover { background: #15803d; transform: translateY(-1px); }
     .modal-save:active { transform: translateY(0); }
+
+    /* ── 경고 시점 설정 행 ── */
+    .warning-row { display: flex; align-items: center; gap: 10px; }
+    .warning-row-label { font-size: 0.8rem; font-weight: 700; color: #94a3b8; letter-spacing: 0.05em; }
+    .btn-warning-edit {
+      display: flex; align-items: center; justify-content: center; gap: 8px; line-height: 1;
+      height: 34px; padding: 0 14px; background: #f8fafc;
+      border: 2px solid #e2e8f0; border-radius: 12px;
+      font-size: 0.88rem; font-weight: 700; color: #94a3b8;
+      cursor: pointer; transition: all 0.18s; white-space: nowrap;
+    }
+    .btn-warning-edit:hover { background: #fefce8; border-color: #fde68a; color: #b45309; transform: translateY(-1px); }
+    .btn-warning-edit .warning-time-badge {
+      background: #e2e8f0; color: #475569;
+      padding: 3px 10px; border-radius: 6px;
+      font-size: 0.82rem; font-weight: 800; line-height: 1;
+      transition: background 0.18s, color 0.18s;
+    }
+    .btn-warning-edit:hover .warning-time-badge { background: #fef08a; color: #92400e; }
+    body.presenting .warning-row { display: none; }
   </style>
 </head>
 <body>
@@ -251,13 +278,32 @@
   <!-- 발표 모드 버튼 -->
   <button class="present-btn" id="presentBtn"><span aria-hidden="true">⛶</span><span>발표 모드</span></button>
 
+  <!-- 경고 시점 모달 -->
+  <div class="modal-overlay" id="warningModalOverlay">
+    <div class="modal">
+      <div class="modal-title">경고 시점 설정</div>
+      <div class="modal-input-wrap">
+        <input class="modal-input" id="modalWarningMin" type="number" min="0" max="99" value="1" />
+        <span class="modal-unit">분</span>
+        <input class="modal-input" id="modalWarningSec" type="number" min="0" max="59" value="0" />
+        <span class="modal-unit">초 전</span>
+      </div>
+      <div class="modal-footer">
+        <button class="modal-cancel" id="warningModalCancelBtn">취소</button>
+        <button class="modal-save"   id="warningModalSaveBtn">저장</button>
+      </div>
+    </div>
+  </div>
+
   <!-- Q&A 모달 -->
   <div class="modal-overlay" id="qnaModalOverlay">
     <div class="modal">
       <div class="modal-title">Q&A 시간 설정</div>
       <div class="modal-input-wrap">
-        <input class="modal-input" id="modalQnaInput" type="number" min="1" max="99" value="5" />
+        <input class="modal-input" id="modalQnaMin" type="number" min="0" max="99" value="5" />
         <span class="modal-unit">분</span>
+        <input class="modal-input" id="modalQnaSec" type="number" min="0" max="59" value="0" />
+        <span class="modal-unit">초</span>
       </div>
       <div class="modal-footer">
         <button class="modal-cancel" id="modalCancelBtn">취소</button>
@@ -297,6 +343,16 @@
       <button class="ctrl-btn btn-start"   id="startBtn">시작</button>
       <button class="ctrl-btn btn-reset"   id="resetBtn">↺ 초기화</button>
       <button class="ctrl-btn btn-restart" id="restartBtn">↻ 재시작</button>
+    </div>
+
+    <!-- 경고 시점 -->
+    <div class="warning-row">
+      <span class="warning-row-label"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block;vertical-align:-1px"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg> 경고 시점</span>
+      <button class="btn-warning-edit" id="warningEditBtn" title="경고 시점 수정">
+        <span>✏️</span>
+        <span class="warning-time-badge" id="warningTimeBadge">1분</span>
+        <span>전부터</span>
+      </button>
     </div>
 
     <!-- Q&A -->
@@ -339,19 +395,28 @@
   const startBtn        = document.getElementById('startBtn');
   const resetBtn        = document.getElementById('resetBtn');
   const restartBtn      = document.getElementById('restartBtn');
+  const warningEditBtn      = document.getElementById('warningEditBtn');
+  const warningTimeBadge    = document.getElementById('warningTimeBadge');
+  const warningModalOverlay = document.getElementById('warningModalOverlay');
+  const modalWarningInput   = document.getElementById('modalWarningInput');
   const qnaBtn          = document.getElementById('qnaBtn');
   const qnaEditBtn      = document.getElementById('qnaEditBtn');
   const qnaTimeBadge    = document.getElementById('qnaTimeBadge');
   const presentBtn      = document.getElementById('presentBtn');
   const dashPresets     = document.querySelectorAll('.dash-preset-btn');
   const qnaModalOverlay = document.getElementById('qnaModalOverlay');
-  const modalQnaInput   = document.getElementById('modalQnaInput');
 
   // ── 초기 SVG 설정 ────────────────────────────────────
-  progressRing.style.strokeDasharray  = CIRCUMFERENCE;
+  progressRing.style.strokeDasharray  = `${CIRCUMFERENCE} ${CIRCUMFERENCE}`;
   progressRing.style.strokeDashoffset = 0;
 
   // ── 헬퍼 ─────────────────────────────────────────────
+  function fmtDuration(secs) {
+    const m = Math.floor(secs / 60), s = secs % 60;
+    if (m > 0 && s > 0) return `${m}분 ${s}초`;
+    if (m > 0) return `${m}분`;
+    return `${s}초`;
+  }
   function fmt(s) {
     const m = Math.floor(s / 60), sec = s % 60;
     return `${String(m).padStart(2,'0')}:${String(sec).padStart(2,'0')}`;
@@ -363,13 +428,17 @@
 
     // 원형 진행바
     const pct = totalSeconds > 0 ? remaining / totalSeconds : 0;
-    progressRing.style.strokeDashoffset = CIRCUMFERENCE * (1 - pct);
+    progressRing.style.strokeDasharray = `${CIRCUMFERENCE * pct} ${CIRCUMFERENCE}`;
+    progressRing.style.strokeDashoffset = 0;
 
     // 상태 클래스
-    document.body.classList.remove('warning', 'finished');
+    document.body.classList.remove('warning', 'finished', 'last5');
     if (remaining <= 0) {
       document.body.classList.add('finished');
       statusText.textContent = isQnaMode ? 'Q&A 종료' : '시간 종료';
+    } else if (remaining <= 5) {
+      document.body.classList.add('warning', 'last5');
+      statusText.textContent = '⚠ 5초 이하 남음';
     } else if (warningSeconds > 0 && remaining <= warningSeconds) {
       document.body.classList.add('warning');
       const wm = Math.floor(warningSeconds / 60), ws = warningSeconds % 60;
@@ -451,26 +520,56 @@
     updateDisplay();
   });
 
+  // ── 경고 시점 모달 ───────────────────────────────────
+  const modalWarningMin = document.getElementById('modalWarningMin');
+  const modalWarningSec = document.getElementById('modalWarningSec');
+  warningEditBtn.addEventListener('click', () => {
+    modalWarningMin.value = Math.floor(warningSeconds / 60);
+    modalWarningSec.value = warningSeconds % 60;
+    warningModalOverlay.classList.add('open');
+    modalWarningMin.focus(); modalWarningMin.select();
+  });
+  function closeWarningModal() { warningModalOverlay.classList.remove('open'); }
+  function saveWarningModal() {
+    const m = Math.max(0, Math.min(99, parseInt(modalWarningMin.value) || 0));
+    const s = Math.max(0, Math.min(59, parseInt(modalWarningSec.value) || 0));
+    warningSeconds = m * 60 + s;
+    warningTimeBadge.textContent = warningSeconds === 0 ? '끄기' : fmtDuration(warningSeconds);
+    closeWarningModal();
+    updateDisplay();
+  }
+  document.getElementById('warningModalCancelBtn').addEventListener('click', closeWarningModal);
+  document.getElementById('warningModalSaveBtn').addEventListener('click', saveWarningModal);
+  warningModalOverlay.addEventListener('click', e => { if (e.target === warningModalOverlay) closeWarningModal(); });
+  [modalWarningMin, modalWarningSec].forEach(el => el.addEventListener('keydown', e => {
+    if (e.key === 'Enter')  { e.preventDefault(); saveWarningModal(); }
+    if (e.key === 'Escape') { e.preventDefault(); closeWarningModal(); }
+  }));
+
   // ── Q&A 모달 ─────────────────────────────────────────
+  const modalQnaMin = document.getElementById('modalQnaMin');
+  const modalQnaSec = document.getElementById('modalQnaSec');
   qnaEditBtn.addEventListener('click', () => {
-    modalQnaInput.value = Math.round(qnaSeconds / 60);
+    modalQnaMin.value = Math.floor(qnaSeconds / 60);
+    modalQnaSec.value = qnaSeconds % 60;
     qnaModalOverlay.classList.add('open');
-    modalQnaInput.focus(); modalQnaInput.select();
+    modalQnaMin.focus(); modalQnaMin.select();
   });
   function closeQnaModal() { qnaModalOverlay.classList.remove('open'); }
   function saveQnaModal() {
-    const val = Math.max(1, Math.min(99, parseInt(modalQnaInput.value) || 5));
-    qnaSeconds = val * 60;
-    qnaTimeBadge.textContent = `${val}분`;
+    const m = Math.max(0, Math.min(99, parseInt(modalQnaMin.value) || 0));
+    const s = Math.max(0, Math.min(59, parseInt(modalQnaSec.value) || 0));
+    qnaSeconds = Math.max(1, m * 60 + s);
+    qnaTimeBadge.textContent = fmtDuration(qnaSeconds);
     closeQnaModal();
   }
   document.getElementById('modalCancelBtn').addEventListener('click', closeQnaModal);
   document.getElementById('modalSaveBtn').addEventListener('click', saveQnaModal);
   qnaModalOverlay.addEventListener('click', e => { if (e.target === qnaModalOverlay) closeQnaModal(); });
-  modalQnaInput.addEventListener('keydown', e => {
+  [modalQnaMin, modalQnaSec].forEach(el => el.addEventListener('keydown', e => {
     if (e.key === 'Enter')  { e.preventDefault(); saveQnaModal(); }
     if (e.key === 'Escape') { e.preventDefault(); closeQnaModal(); }
-  });
+  }));
 
   // ── 발표 모드 ────────────────────────────────────────
   presentBtn.addEventListener('click', () => {
