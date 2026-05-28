@@ -541,6 +541,7 @@
   document.getElementById('warningModalCancelBtn').addEventListener('click', closeWarningModal);
   document.getElementById('warningModalSaveBtn').addEventListener('click', saveWarningModal);
   warningModalOverlay.addEventListener('click', e => { if (e.target === warningModalOverlay) closeWarningModal(); });
+  [modalWarningMin, modalWarningSec].forEach(el => el.addEventListener('blur', () => { if (el.value === '') el.value = 0; }));
   [modalWarningMin, modalWarningSec].forEach(el => el.addEventListener('keydown', e => {
     if (e.key === 'Enter')  { e.preventDefault(); saveWarningModal(); }
     if (e.key === 'Escape') { e.preventDefault(); closeWarningModal(); }
@@ -566,6 +567,7 @@
   document.getElementById('modalCancelBtn').addEventListener('click', closeQnaModal);
   document.getElementById('modalSaveBtn').addEventListener('click', saveQnaModal);
   qnaModalOverlay.addEventListener('click', e => { if (e.target === qnaModalOverlay) closeQnaModal(); });
+  [modalQnaMin, modalQnaSec].forEach(el => el.addEventListener('blur', () => { if (el.value === '') el.value = 0; }));
   [modalQnaMin, modalQnaSec].forEach(el => el.addEventListener('keydown', e => {
     if (e.key === 'Enter')  { e.preventDefault(); saveQnaModal(); }
     if (e.key === 'Escape') { e.preventDefault(); closeQnaModal(); }
